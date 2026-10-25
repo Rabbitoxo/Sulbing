@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Happy Gago Day</title>
+<style>
+  :root { --fade-ms: 900ms; }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#f8edf4; }
+  body { font-family: Georgia, "Times New Roman", serif; }
+  #app, .scene { position:fixed; inset:0; width:100%; height:100%; }
+  .scene {
+    display:none; opacity:0; background-position:center; background-size:cover;
+    transition: opacity var(--fade-ms) ease;
+  }
+  .scene.active { display:block; }
+  .scene.visible { opacity:1; }
+  #intro { background-image:url("assets/characters/start.png"); cursor:pointer; }
+  #character-layer { position:absolute; inset:0; pointer-events:none; }
+  .character {
+    position:absolute; inset:0; width:100%; height:100%; max-width:none; max-height:none;
+    object-fit:cover; object-position:center; opacity:0;
+    transition:opacity 900ms ease;
+    user-select:none; -webkit-user-drag:none; pointer-events:none;
+  }
+  .character.shown { opacity:1; }
+  .character.shown { opacity:1; transform:translate(-50%, -50%) scale(1); }
+  #intro-hint { display:none;
+
+    position:absolute; left:50%; bottom:3.2vh; transform:translateX(-50%);
+    color:rgba(80,55,80,.78); font: 500 clamp(12px,1.4vw,17px)/1.4 Arial,sans-serif;
+    letter-spacing:.12em; text-shadow:0 1px 10px rgba(255,255,255,.8);
+    padding:.65em 1em; border-radius:999px; background:rgba(255,255,255,.28);
+    pointer-events:none; white-space:nowrap;
+  }
+  #video-scene { background:#000; align-items:center; justify-content:center; }
+  #letter-video { width:100%; height:100%; object-fit:contain; background:#000; }
+  #ending { background-image:url("assets/characters/ending.png"); cursor:default; }
+  #birthday-title {
+    position:absolute; left:0; right:0; top:8vh; display:block;
+    padding:0 5vw; text-align:center; color:#172744;
+    font-size:clamp(18px,2.2vw,30px); line-height:1.25; letter-spacing:.04em;
+    text-shadow:0 1px 8px rgba(255,255,255,.45);
+    opacity:0; transition:opacity 1.4s ease; pointer-events:none;
+  }
+  #ending.visible #birthday-title { opacity:1; }
+  #restart {
+    position:absolute; bottom:4vh; left:50%; transform:translateX(-50%);
+    border:1px solid rgba(255,255,255,.75); color:white; background:rgba(255,255,255,.18);
+    border-radius:999px; padding:12px 22px; font:14px Arial,sans-serif;
+    letter-spacing:.06em; cursor:pointer; backdrop-filter:blur(8px);
+    opacity:0; transition:opacity .8s ease;
+  }
+  #ending.visible #restart { opacity:1; transition-delay:1s; }
+  #sound-control {
+    position:fixed; z-index:20; right:18px; bottom:18px; display:flex; align-items:center;
+    gap:9px; padding:10px 12px; border-radius:999px;
+    color:#594c59; background:rgba(255,255,255,.72); backdrop-filter:blur(10px);
+    box-shadow:0 2px 18px rgba(70,40,70,.08); font:12px Arial,sans-serif;
+  }
+  #volume { width:100px; accent-color:#c58ba9; cursor:pointer; }
+  #sound-label { white-space:nowrap; }
+  @media (max-width:600px) {
+    #sound-control { right:10px; bottom:10px; padding:8px 10px; }
+    #volume { width:75px; }
+  }
+</style>
+</head>
+<body>
+<main id="app">
+  <section id="intro" class="scene active visible" aria-label="Happy Gago Day">
+    <div id="character-layer"></div>
+    <div id="intro-hint">CLICK TO REVEAL</div>
+  </section>
+  <section id="video-scene" class="scene" aria-label="Birthday Comment">
+    <video id="letter-video" playsinline preload="auto">
+      <source src="assets/characters/letter-video.mp4" type="video/mp4">
+    </video>
+  </section>
+  <section id="ending" class="scene" aria-label="End">
+    <button id="restart" type="button">Back to the beginning ↺</button>
+  </section>
+</main>
+
+<audio id="bg-music" src="assets/characters/music.wav" loop preload="auto"></audio>
+<div id="sound-control">
+  <span id="sound-label">♪</span>
+  <input id="volume" aria-label="music volume" type="range" min="0" max="1" step="0.01" value="0.35">
+</div>
+
+<script>
+
+const CHARACTER_FILES = [
+  "assets/characters/character-01.png",
+  "assets/characters/character-02.png",
+  "assets/characters/character-03.png",
+  "assets/characters/character-04.png",
+  "assets/characters/character-05.png",
+  "assets/characters/character-06.png",
+  "assets/characters/character-07.png",
+  "assets/characters/character-08.png"
+];
+
+
+const BIRTHDAY_NAME = "Gago";
+
+const intro = document.getElementById("intro");
+const characterLayer = document.getElementById("character-layer");
+const hint = document.getElementById("intro-hint");
+const videoScene = document.getElementById("video-scene");
+const video = document.getElementById("letter-video");
+const ending = document.getElementById("ending");
+const restart = document.getElementById("restart");
+const music = document.getElementById("bg-music");
+const volume = document.getElementById("volume");
+const soundLabel = document.getElementById("sound-label");
+
+let shownCount = 0;
+let transitioning = false;
+let musicStarted = false;
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[ch]));
+}
+
+function switchScene(next) {
+  document.querySelectorAll(".scene").forEach(scene => {
+    scene.classList.remove("visible");
+    if (scene !== next) {
+      window.setTimeout(() => scene.classList.remove("active"), 950);
+    }
+  });
+  next.classList.add("active");
+  requestAnimationFrame(() => requestAnimationFrame(() => next.classList.add("visible")));
+}
+
+function startMusicFromUserGesture() {
+  if (musicStarted) return;
+  musicStarted = true;
+  music.volume = Number(volume.value);
+  music.play().catch(() => {
+  });
+}
+
+function createCharacters() {
+  CHARACTER_FILES.forEach((src, index) => {
+    const img = document.createElement("img");
+    img.className = "character";
+    img.src = src;
+    img.alt = "";
+    img.draggable = false;
+    img.style.left = "50%";
+    img.style.top = "50%";
+    characterLayer.appendChild(img);
+  });
+}
+createCharacters();
+
+intro.addEventListener("click", () => {
+  if (transitioning) return;
+  startMusicFromUserGesture();
+
+  const characters = [...characterLayer.querySelectorAll(".character")];
+  if (shownCount < characters.length) {
+    const img = characters[shownCount];
+    img.classList.add("shown");
+    shownCount++;
+    hint.textContent = shownCount < characters.length ? "CLICK TO REVEAL" : "CLICK TO CONTINUE";
+    return;
+  }
+
+  transitioning = true;
+  switchScene(videoScene);
+  video.currentTime = 0;
+  const playPromise = video.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => {
+      videoScene.style.cursor = "pointer";
+      videoScene.onclick = () => video.play().catch(() => {});
+    });
+  }
+});
+
+video.addEventListener("ended", () => {
+  switchScene(ending);
+  transitioning = false;
+});
+
+restart.addEventListener("click", () => {
+  video.pause();
+  video.currentTime = 0;
+  shownCount = 0;
+  transitioning = false;
+  characterLayer.querySelectorAll(".character").forEach(img => img.classList.remove("shown"));
+  hint.textContent = "CLICK TO REVEAL";
+  switchScene(intro);
+});
+
+volume.addEventListener("input", () => {
+  music.volume = Number(volume.value);
+  soundLabel.textContent = Number(volume.value) === 0 ? "♪×" : "♪";
+});
+
+music.volume = Number(volume.value);
+</script>
+</body>
+</html>
